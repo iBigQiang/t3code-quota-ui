@@ -1,0 +1,121 @@
+name: Windows x64 installer
+
+on:
+  push:
+    branches: [build/windows-x64-installer]
+    paths:
+      - .github/workflows/windows-x64.yml
+      - scripts/**
+      - LICENSE
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CLIENT_COMMIT: d1bb533d9b69165ce94f1add52f9dcb53dd15684
+  APP_VERSION: 0.1.10-quota.1.4.0
+  NODE_OPTIONS: --max-old-space-size=6144
+  T3CODE_TELEMETRY_ENABLED: 'false'
+  T3CODE_TELEMETRY_CHANNEL: dev
+
+jobs:
+  bundle:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 65
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: nanami-0713/t3code
+          ref: ${{ env.CLIENT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: quota-overlay
+          persist-credentials: false
+      - name: Apply Quota UI and the Windows port
+        run: node quota-overlay/scripts/windows/prepare.mjs .
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+      - name: Build the desktop, backend and renderer
+        run: |
+          node scripts/update-release-package-versions.ts "$APP_VERSION"
+          vp run build:desktop:bundle
+          grep -q 'id="t3-quota-ui-i18n"' apps/server/dist/client/index.html
+      - name: Build matching x64 WSL runtime
+        run: |
+          command -v patchelf || { sudo apt-get update -q && sudo apt-get install -y patchelf; }
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-unknown-linux-gnu
+          mkdir -p "$RUNNER_TEMP/quota-monitor/linux-x64"
+          cp native/resource-monitor/target/x86_64-unknown-linux-gnu/release/t3-resource-monitor "$RUNNER_TEMP/quota-monitor/linux-x64/"
+          node apps/server/scripts/cli.ts build-exe --verbose
+          node scripts/build-cli-archive.ts --platform linux --arch x64 --version "$APP_VERSION" --resource-monitor-dir "$RUNNER_TEMP/quota-monitor" --output-dir release-cli
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-build-inputs
+          path: |
+            apps/server/dist
+            apps/desktop/dist-electron
+            release-cli/*.tar.gz
+          if-no-files-found: error
+          retention-days: 1
+
+  installer:
+    needs: bundle
+    runs-on: windows-2022
+    timeout-minutes: 85
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          repository: nanami-0713/t3code
+          ref: ${{ env.CLIENT_COMMIT }}
+          persist-credentials: false
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          path: quota-overlay
+          persist-credentials: false
+      - name: Apply Windows packaging configuration
+        run: node quota-overlay/scripts/windows/prepare.mjs .
+      - uses: ./.github/actions/setup-ci-deps
+        with:
+          install-args: --filter=t3... --filter=@t3tools/web... --filter=@t3tools/desktop... --filter=@t3tools/scripts...
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: desktop-build-inputs
+      - name: Build native resource monitor
+        shell: pwsh
+        run: |
+          rustup target add x86_64-pc-windows-msvc
+          cargo build --locked --release --manifest-path native/resource-monitor/Cargo.toml --target x86_64-pc-windows-msvc
+      - name: Build x64 NSIS installation wizard
+        shell: pwsh
+        env:
+          T3CODE_DESKTOP_REUSE_RESOURCE_MONITOR: 'true'
+        run: |
+          node scripts/update-release-package-versions.ts $env:APP_VERSION
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $wsl = Get-Item "release-cli/t3-$env:APP_VERSION-linux-x64.tar.gz"
+          node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --skip-build --build-version $env:APP_VERSION --wsl-runtime $wsl.FullName --output-dir release --verbose
+      - name: Install to D drive and test the installed application
+        shell: pwsh
+        run: |
+          $dir = 'D:\T3Code'
+          $exe = Get-Item "release/T3-Code-Quota-UI-$env:APP_VERSION-x64.exe"
+          $setup = Start-Process $exe.FullName -ArgumentList '/S', '/currentuser', "/D=$dir" -PassThru -Wait
+          if ($setup.ExitCode -ne 0) { throw "NSIS exited with $($setup.ExitCode)" }
+          $installed = Get-Item (Join-Path $dir 'T3 Code Quota UI.exe')
+          node scripts/smoke-desktop-app.ts --executable $installed.FullName --artifacts-dir "$env:RUNNER_TEMP/quota-smoke"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $sum = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$sum  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
+          "Installed and launched from $($installed.FullName). SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: T3-Code-Quota-UI-Windows-x64
+          path: |
+            release/*-x64.exe
+            release/*-x64.exe.sha256
+          compression-level: 0
+          if-no-files-found: error
+          retention-days: 30

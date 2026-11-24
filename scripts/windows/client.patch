@@ -1,0 +1,196 @@
+diff --git a/apps/desktop/package.json b/apps/desktop/package.json
+index 97554fd8..53cacc3f 100644
+--- a/apps/desktop/package.json
++++ b/apps/desktop/package.json
+@@ -41,5 +41,5 @@
+     "tailwindcss": "^4.0.0",
+     "vite-plus": "catalog:"
+   },
+-  "productName": "T3 Code (Beta)"
++  "productName": "T3 Code Quota UI"
+ }
+diff --git a/apps/desktop/src/app/DesktopConfig.ts b/apps/desktop/src/app/DesktopConfig.ts
+index ef290904..5755cc79 100644
+--- a/apps/desktop/src/app/DesktopConfig.ts
++++ b/apps/desktop/src/app/DesktopConfig.ts
+@@ -57,7 +57,7 @@ export const DesktopConfig = Config.all({
+   ),
+   desktopLauncherPath: trimmedString("T3CODE_DESKTOP_LAUNCHER_PATH"),
+   appImagePath: trimmedString("APPIMAGE"),
+-  disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
++  disableAutoUpdate: Config.Boolean("T3CODE_DISABLE_AUTO_UPDATE").pipe(Config.withDefault(true)),
+   mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
+   mockUpdateServerPort: Config.Port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
+     Config.withDefault(3000),
+diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
+index 4f984642..2687d778 100644
+--- a/apps/web/src/components/usage/UsagePage.tsx
++++ b/apps/web/src/components/usage/UsagePage.tsx
+@@ -10,7 +10,7 @@ import {
+   type UsageSummaryInput,
+ } from "@t3tools/contracts";
+ import { CircleAlertIcon, ChevronDownIcon, InfoIcon, SlidersHorizontalIcon } from "lucide-react";
+-import { useEffect, useEffectEvent, useRef, useState } from "react";
++import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+ import { settlePromise } from "@t3tools/client-runtime/state/runtime";
+ import * as AsyncResult from "effect/reactivity/AsyncResult";
+ import * as Cause from "effect/Cause";
+@@ -174,7 +174,18 @@ function UsageModelDialogHost({
+   );
+ }
+ 
++function quotaPreferenceSnapshot() {
++  const ui = globalThis.__t3QuotaUi;
++  return ui ? [ui.getLang(), ui.getCurrency(), ui.getRate()].join(":") : "zh:USD:7.25";
++}
++
++function subscribeQuotaPreferences(listener: () => void) {
++  return globalThis.__t3QuotaUi?.subscribe(listener) ?? (() => {});
++}
++
+ export function UsagePage() {
++  const quotaPrefs = useSyncExternalStore(subscribeQuotaPreferences, quotaPreferenceSnapshot, quotaPreferenceSnapshot);
++  const [quotaLang, quotaCurrency] = quotaPrefs.split(":");
+   const [preferences, setPreferences] = useState(readUsagePagePreferences);
+   const keybindings = useAtomValue(primaryServerKeybindingsAtom);
+   const hour12 = usePrimarySettings((settings) => resolveHour12(settings.timestampFormat));
+@@ -505,6 +516,12 @@ export function UsagePage() {
+       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+         <header className="@container/usage-header flex min-h-12 shrink-0 items-center gap-1 border-b ps-5 pe-2">
+           {topbarContent}
++          <Button size="sm" variant="ghost" aria-label="Switch currency" onClick={() => globalThis.__t3QuotaUi?.toggleCurrency()}>
++            {quotaCurrency === "CNY" ? "¥ CNY" : "$ USD"}
++          </Button>
++          <Button size="sm" variant="ghost" aria-label="Switch language" onClick={() => globalThis.__t3QuotaUi?.toggleLang()}>
++            {quotaLang === "zh" ? "中文" : "EN"}
++          </Button>
+           <AppRouteModalClose />
+         </header>
+ 
+@@ -518,6 +535,7 @@ export function UsagePage() {
+               </p>
+             ) : showingLimits ? (
+               <UsageLimitsSection
++                key={quotaPrefs}
+                 selectedEnvironmentIds={selectedEnvironmentIds}
+                 hiddenProviders={hiddenProviders}
+                 now={limitsNow}
+@@ -535,6 +553,7 @@ export function UsagePage() {
+               </div>
+             ) : (
+               <UsageOverview
++                key={quotaPrefs}
+                 merged={merged}
+                 shownWindow={shownWindow}
+                 hour12={hour12}
+diff --git a/packages/shared/src/usageFormat.ts b/packages/shared/src/usageFormat.ts
+index f2a2d9c7..40c35bde 100644
+--- a/packages/shared/src/usageFormat.ts
++++ b/packages/shared/src/usageFormat.ts
+@@ -15,6 +15,19 @@ const CURRENCY = new Intl.NumberFormat("en-US", {
+   maximumFractionDigits: 2,
+ });
+ 
++// Installed by the Quota UI head script in the desktop renderer.
++declare global {
++  var __t3QuotaUi: {
++    getLang(): "en" | "zh";
++    getCurrency(): "CNY" | "USD";
++    getRate(): number;
++    toggleLang(): void;
++    toggleCurrency(): void;
++    subscribe(listener: () => void): () => void;
++  } | undefined;
++}
++
++const CNY = new Intl.NumberFormat("zh-CN", { style: "currency", currency: "CNY" });
+ const INTEGER = new Intl.NumberFormat("en-US");
+ 
+ export function formatMalformedUsageWarning(count: number): string {
+@@ -56,6 +69,8 @@ export function usageSourceMessages(sources: readonly UsageSource[]): readonly s
+ }
+ 
+ export function formatUsd(value: number): string {
++  const ui = globalThis.__t3QuotaUi;
++  if (ui?.getCurrency() === "CNY") return CNY.format(value * ui.getRate());
+   return CURRENCY.format(value);
+ }
+ 
+diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
+index 0d8b8e57..deb0b573 100644
+--- a/scripts/build-desktop-artifact.ts
++++ b/scripts/build-desktop-artifact.ts
+@@ -63,7 +63,7 @@ import { Command, Flag } from "effect/cli";
+ import { ChildProcess, ChildProcessSpawner } from "effect/process";
+ 
+ const LINUX_ICON_SIZES = [16, 22, 24, 32, 48, 64, 128, 256, 512] as const;
+-const DESKTOP_APP_ID = "com.t3tools.t3code";
++const DESKTOP_APP_ID = "io.github.ibigqiang.t3codequotaui";
+ const APPLE_TEAM_ID_PATTERN = /^[A-Z0-9]{10}$/u;
+ 
+ const BuildPlatform = Schema.Literals(["mac", "linux", "win"]);
+@@ -987,7 +987,7 @@ interface StagePackageJson {
+ }
+ 
+ export const STAGE_INSTALL_ARGS = ["install", "--prod"] as const;
+-export const DESKTOP_ELECTRON_LANGUAGES = ["en-US"] as const;
++export const DESKTOP_ELECTRON_LANGUAGES = ["en-US", "zh-CN"] as const;
+ export const DESKTOP_FILE_EXCLUSIONS = [
+   // Cursor walks from argv[1] to platform assets; helpers and native addons need real paths outside ASAR.
+   "!**/node_modules/@cursor/sdk-*/**/*",
+@@ -2808,6 +2808,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+   const resolvedProductName = productNameOverride ?? resolveDesktopProductName(version);
+   const extraResources: Array<Record<string, unknown>> = [
+     ...DESKTOP_EXTRA_RESOURCES,
++    { from: "apps/desktop/prod-resources/LICENSE-quota-ui.txt", to: "LICENSE-quota-ui.txt" },
+     ...(platform === "linux" ? LINUX_CAPTURE_EXTRA_RESOURCES : []),
+     ...(platform === "linux" ? LINUX_BROWSER_SECRET_EXTRA_RESOURCES : []),
+     ...(platform === "win" ? WINDOWS_SERVER_EXTRA_RESOURCES : []),
+@@ -2817,7 +2818,7 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+     afterPack: (yield* Path.Path).join(yield* RepoRoot, "scripts/prepare-server-compile-cache.cjs"),
+     appId: DESKTOP_APP_ID,
+     productName: resolvedProductName,
+-    artifactName: "T3-Code-${version}-${arch}.${ext}",
++    artifactName: "T3-Code-Quota-UI-${version}-${arch}.${ext}",
+     electronLanguages: [...DESKTOP_ELECTRON_LANGUAGES],
+     files: [
+       ...DESKTOP_FILE_EXCLUSIONS,
+@@ -2992,6 +2993,11 @@ export const createBuildConfig = Effect.fn("createBuildConfig")(function* (
+   if (platform === "win") {
+     buildConfig.npmRebuild = false;
+     buildConfig.nsis = {
++      oneClick: false,
++      allowToChangeInstallationDirectory: true,
++      runAfterFinish: false,
++      language: "2052",
++      installerLanguages: ["zh_CN", "en_US"],
+       differentialPackage: true,
+       include: "apps/desktop/resources/installer.nsh",
+     };
+diff --git a/scripts/smoke-desktop-app.ts b/scripts/smoke-desktop-app.ts
+index 15882dce..dca0bec7 100644
+--- a/scripts/smoke-desktop-app.ts
++++ b/scripts/smoke-desktop-app.ts
+@@ -66,6 +66,22 @@ try {
+     step = "opening the thread";
+     await thread.click();
+     await page.getByText(THREAD_MESSAGE).waitFor({ timeout: STEP_TIMEOUT_MS });
++    step = "testing the installed quota dashboard";
++    await page.evaluate(() => {
++      window.location.hash = "/usage";
++    });
++    const currency = page.getByRole("button", { name: "Switch currency" });
++    const language = page.getByRole("button", { name: "Switch language" });
++    await currency.waitFor({ timeout: STEP_TIMEOUT_MS });
++    const beforeCurrency = await currency.innerText();
++    await currency.click();
++    await page.waitForFunction((before) => document.querySelector('[aria-label="Switch currency"]')?.textContent?.trim() !== before, beforeCurrency);
++    await currency.click();
++    const beforeLanguage = await language.innerText();
++    await language.click();
++    await page.waitForFunction((before) => document.querySelector('[aria-label="Switch language"]')?.textContent?.trim() !== before, beforeLanguage);
++    await language.click();
++    console.log("Installed quota dashboard opened and both preference controls responded.");
+   } catch (error) {
+     NodeFS.mkdirSync(artifactsDir, { recursive: true });
+     await page
