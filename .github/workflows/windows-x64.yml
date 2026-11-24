@@ -114,11 +114,16 @@ jobs:
         run: |
           $dir = 'D:\T3Code'
           $exe = Get-Item "release/T3-Code-Quota-UI-$env:APP_VERSION-x64.exe"
-          & ./quota-overlay/scripts/windows/test-installer.ps1 -Installer $exe.FullName -Destination $dir
+          $setup = Start-Process $exe.FullName -ArgumentList '/S', '/currentuser', "/D=$dir" -PassThru -Wait
+          if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
+          $app = Get-Item "$dir/T3 Code Quota UI.exe"
+          node scripts/smoke-desktop-app.ts --executable $app.FullName
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $sum = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sum  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
-          "Verified the live directory chooser and launched the installed app from $dir. SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
+          "Verified custom-directory installation and launched the installed app from $dir. SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: ${{ !cancelled() && hashFiles('release/*-x64.exe') != '' }}
         with:
           name: T3-Code-Quota-UI-Windows-x64
           path: |
