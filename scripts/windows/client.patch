@@ -234,29 +234,71 @@ index 0d8b8e57..888068c6 100644
        include: "apps/desktop/resources/installer.nsh",
      };
 diff --git a/scripts/smoke-desktop-app.ts b/scripts/smoke-desktop-app.ts
-index 15882dce..dca0bec7 100644
+index 15882dce..b149e590 100644
 --- a/scripts/smoke-desktop-app.ts
 +++ b/scripts/smoke-desktop-app.ts
-@@ -66,6 +66,22 @@ try {
+@@ -63,11 +63,64 @@ try {
+     step = `finding "${THREAD_TITLE}" in the sidebar`;
+     const thread = page.locator("li[data-thread-item]", { hasText: THREAD_TITLE });
+     await thread.waitFor({ timeout: STEP_TIMEOUT_MS });
++    step = "selecting Simplified Chinese in application settings";
++    await page.evaluate(() => {
++      window.location.hash = "/settings/general";
++    });
++    await page.getByRole("combobox", { name: /^(Language|语言)$/ }).click();
++    await page.getByRole("option", { name: "中文（简体）", exact: true }).click();
++    await page.waitForFunction(() => document.documentElement.lang === "zh");
++    await page.evaluate(() => {
++      window.location.hash = "/settings/chat";
++    });
++    await page.getByText("富文本输入框", { exact: true }).waitFor({ timeout: STEP_TIMEOUT_MS });
++
      step = "opening the thread";
++    await page.keyboard.press("Escape");
      await thread.click();
      await page.getByText(THREAD_MESSAGE).waitFor({ timeout: STEP_TIMEOUT_MS });
++    step = "creating and reopening a draft in Simplified Chinese";
++    await page.getByRole("button", { name: /^(New thread|新建对话)$/ }).click();
++    await page.waitForURL((url) => /^#\/draft\/[^/?]+/.test(url.hash), {
++      timeout: STEP_TIMEOUT_MS,
++    });
++    const composer = page.locator('[data-chat-composer-form="true"]');
++    await composer.waitFor({ timeout: STEP_TIMEOUT_MS });
++    const draftUrl = page.url();
++    await page.reload();
++    await composer.waitFor({ timeout: STEP_TIMEOUT_MS });
++    if (page.url() !== draftUrl) throw new Error("The saved draft route changed after reload.");
++    await page.waitForFunction(() => document.documentElement.lang === "zh");
++    console.log("Simplified Chinese was saved, and both the seeded thread and draft opened.");
++
 +    step = "testing the installed quota dashboard";
 +    await page.evaluate(() => {
 +      window.location.hash = "/usage";
 +    });
-+    const currency = page.getByRole("button", { name: "Switch currency" });
-+    const language = page.getByRole("button", { name: "Switch language" });
++    const currency = page.getByRole("button", { name: /Switch currency|切换币种/ });
++    const language = page.getByRole("button", { name: /Switch language|切换语言/ });
 +    await currency.waitFor({ timeout: STEP_TIMEOUT_MS });
 +    const beforeCurrency = await currency.innerText();
 +    await currency.click();
-+    await page.waitForFunction((before) => document.querySelector('[aria-label="Switch currency"]')?.textContent?.trim() !== before, beforeCurrency);
++    await page.waitForFunction((before) => {
++      const text = document.querySelector('[aria-label="Switch currency"],[aria-label="切换币种"]')?.textContent?.trim();
++      return Boolean(text && text !== before);
++    }, beforeCurrency);
 +    await currency.click();
 +    const beforeLanguage = await language.innerText();
 +    await language.click();
-+    await page.waitForFunction((before) => document.querySelector('[aria-label="Switch language"]')?.textContent?.trim() !== before, beforeLanguage);
++    await page.waitForFunction((before) => {
++      const text = document.querySelector('[aria-label="Switch language"],[aria-label="切换语言"]')?.textContent?.trim();
++      return Boolean(text && text !== before);
++    }, beforeLanguage);
 +    await language.click();
 +    console.log("Installed quota dashboard opened and both preference controls responded.");
    } catch (error) {
      NodeFS.mkdirSync(artifactsDir, { recursive: true });
++    console.error("Window URL:", page.url());
++    const report = await page.locator("pre").filter({ hasText: /Error:|错误/ }).first()
++      .textContent({ timeout: 1_000 }).catch(() => null);
++    if (report) console.error("Renderer error report:\n", report);
      await page
+       .screenshot({ path: NodePath.join(artifactsDir, "window.png"), timeout: 10_000 })
+       .catch(() => {});

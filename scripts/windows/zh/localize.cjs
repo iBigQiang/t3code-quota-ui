@@ -57,6 +57,3 @@ if(!original.includes(marker)) throw Error("Cannot locate locale activation");
 fs.writeFileSync(runtime,original.replace(marker,marker+'\n  (globalThis as typeof globalThis & { __t3QuotaUi?: { setLang: (lang: string) => void } }).__t3QuotaUi?.setLang(locale === "zh" ? "zh" : "en");'));
 const provider=path.join(src,"i18n/I18nProvider.tsx");
 fs.writeFileSync(provider,fs.readFileSync(provider,"utf8").replace('<GTProvider locale=', '<GTProvider key={locale} locale='));
-// Keep the installer smoke test independent of the runner's desktop locale.
-const smoke = path.resolve("scripts/smoke-desktop-app.ts");
-fs.writeFileSync(smoke,fs.readFileSync(smoke,"utf8").replace('name: "Switch currency"', 'name: /Switch currency|切换币种/').replace('name: "Switch language"', 'name: /Switch language|切换语言/'));

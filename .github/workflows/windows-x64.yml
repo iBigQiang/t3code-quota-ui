@@ -14,7 +14,7 @@ permissions:
 
 env:
   CLIENT_COMMIT: d1bb533d9b69165ce94f1add52f9dcb53dd15684
-  APP_VERSION: 0.1.10-quota.1.4.3
+  APP_VERSION: 0.1.10-quota.1.4.4
   NODE_OPTIONS: --max-old-space-size=6144
   T3CODE_TELEMETRY_ENABLED: 'false'
   T3CODE_TELEMETRY_CHANNEL: dev
@@ -48,6 +48,7 @@ jobs:
         run: |
           node scripts/update-release-package-versions.ts "$APP_VERSION"
           git apply --ignore-space-change quota-overlay/scripts/windows/chat-zh.patch
+          git apply --ignore-space-change quota-overlay/scripts/windows/chat-render.patch
           npm install --prefix "$RUNNER_TEMP/quota-i18n" --no-audit --no-fund --ignore-scripts typescript@5.9.3
           NODE_PATH="$RUNNER_TEMP/quota-i18n/node_modules" node quota-overlay/scripts/windows/zh/localize.cjs
           vp run build:desktop:bundle
@@ -123,13 +124,12 @@ jobs:
           $setup = Start-Process $exe.FullName -ArgumentList '/S', '/currentuser', "/D=$dir" -PassThru -Wait
           if ($setup.ExitCode) { throw "Installer exited with $($setup.ExitCode)" }
           $app = Get-Item "$dir/T3 Code Quota UI.exe"
-          node scripts/smoke-desktop-app.ts --executable $app.FullName
+          node scripts/smoke-desktop-app.ts --executable $app.FullName --artifacts-dir "$env:RUNNER_TEMP/quota-smoke"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
           $sum = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sum  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
-          "Verified custom-directory installation and launched the installed app from $dir. SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
+          "Verified installation at $dir, existing thread, Chinese settings and draft reload. SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
-        if: ${{ !cancelled() && hashFiles('release/*-x64.exe') != '' }}
         with:
           name: T3-Code-Quota-UI-Windows-x64
           path: |
@@ -138,8 +138,15 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: failure()
+        with:
+          name: Windows-launch-diagnostics
+          path: ${{ runner.temp }}/quota-smoke
+          if-no-files-found: ignore
+          retention-days: 7
 
-  publish-picker-update:
+  publish:
     needs: installer
     runs-on: ubuntu-latest
     permissions:
@@ -154,4 +161,4 @@ jobs:
         run: |
           sha256sum -c *.sha256
           zip -0 T3-Code-Quota-UI-Windows-x64.zip *.exe *.sha256
-          gh release create windows-x64-quota-1.4.3 *.exe *.sha256 *.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows x64 · 简体中文界面与模型选择器" --notes "扩展简体中文覆盖，保留自适应模型列表。"
+          gh release create windows-x64-quota-1.4.4 *.exe *.sha256 *.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows x64 · 修复草稿和聊天页面崩溃" --notes "修复打开草稿或已有会话时的 React #301 崩溃。经 Windows 安装验证，支持自定义目录，选用简体中文后可打开会话并重新加载草稿。"

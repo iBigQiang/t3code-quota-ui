@@ -1,0 +1,59 @@
+diff --git a/apps/web/src/components/chat/useWorktreeSetup.ts b/apps/web/src/components/chat/useWorktreeSetup.ts
+index 34ba5ce4..5566e9e6 100644
+--- a/apps/web/src/components/chat/useWorktreeSetup.ts
++++ b/apps/web/src/components/chat/useWorktreeSetup.ts
+@@ -77,8 +77,10 @@ export function useWorktreeSetup(input: {
+     readonly routeThreadRef: ScopedThreadRef;
+     readonly latestSnapshot: WorktreeSetupSnapshot | null | undefined;
+   }>({ routeThreadRef, latestSnapshot: null });
+-  if (heldFor.routeThreadRef !== routeThreadRef || heldFor.latestSnapshot !== latestSnapshot) {
+-    const routeChanged = heldFor.routeThreadRef !== routeThreadRef;
++  const routeChanged =
++    heldFor.routeThreadRef.environmentId !== routeThreadRef.environmentId ||
++    heldFor.routeThreadRef.threadId !== routeThreadRef.threadId;
++  if (routeChanged || heldFor.latestSnapshot !== latestSnapshot) {
+     setHeldFor({ routeThreadRef, latestSnapshot });
+     if (routeChanged) {
+       setHeldSnapshot(null);
+diff --git a/apps/web/src/hooks/useIncrementalTimelineEntries.ts b/apps/web/src/hooks/useIncrementalTimelineEntries.ts
+index d5910d22..8b186357 100644
+--- a/apps/web/src/hooks/useIncrementalTimelineEntries.ts
++++ b/apps/web/src/hooks/useIncrementalTimelineEntries.ts
+@@ -1,4 +1,4 @@
+-import { useState } from "react";
++import { useLayoutEffect, useRef } from "react";
+ import {
+   deriveTimelineEntriesFromVisibleTurnItemsWithState,
+   type TimelineEntriesInput,
+@@ -21,17 +21,19 @@ export function useIncrementalTimelineEntries(
+   threadKey: string | null,
+   input: TimelineEntriesInput,
+ ): TimelineEntriesProjection["entries"] {
+-  const [state, setState] = useState(() => ({
+-    threadKey,
+-    projection: deriveTimelineEntriesFromVisibleTurnItemsWithState(input),
+-  }));
+-  if (state.threadKey === threadKey && sameInput(state.projection.input, input)) {
+-    return state.projection.entries;
+-  }
+-  const projection = deriveTimelineEntriesFromVisibleTurnItemsWithState(
+-    input,
+-    state.threadKey === threadKey ? state.projection : null,
+-  );
+-  setState({ threadKey, projection });
++  const committed = useRef<{
++    threadKey: string | null;
++    projection: TimelineEntriesProjection;
++  } | null>(null);
++  const cached = committed.current;
++  const previous = cached?.threadKey === threadKey ? cached.projection : null;
++  const projection =
++    previous && sameInput(previous.input, input)
++      ? previous
++      : deriveTimelineEntriesFromVisibleTurnItemsWithState(input, previous);
++  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- retains the last committed projection for incremental reuse without scheduling a render
++  useLayoutEffect(() => {
++    committed.current = { threadKey, projection };
++  }, [threadKey, projection]);
+   return projection.entries;
+ }
