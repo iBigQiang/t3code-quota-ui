@@ -26,13 +26,19 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          repository: nanami-0713/t3code
-          ref: ${{ env.CLIENT_COMMIT }}
-          persist-credentials: false
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
           path: quota-overlay
           persist-credentials: false
+      - name: Check out the pinned public desktop source
+        shell: bash
+        run: |
+          git init --quiet .
+          git config core.autocrlf false
+          git config core.longpaths true
+          git remote add origin https://github.com/nanami-0713/t3code.git
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git fetch --quiet --filter=blob:none --depth=1 origin "$CLIENT_COMMIT"
+          git checkout --quiet --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$CLIENT_COMMIT"
       - name: Apply Quota UI and the Windows port
         run: node quota-overlay/scripts/windows/prepare.mjs .
       - uses: ./.github/actions/setup-ci-deps
@@ -68,13 +74,19 @@ jobs:
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
-          repository: nanami-0713/t3code
-          ref: ${{ env.CLIENT_COMMIT }}
-          persist-credentials: false
-      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
-        with:
           path: quota-overlay
           persist-credentials: false
+      - name: Check out the pinned public desktop source
+        shell: bash
+        run: |
+          git init --quiet .
+          git config core.autocrlf false
+          git config core.longpaths true
+          git remote add origin https://github.com/nanami-0713/t3code.git
+          git sparse-checkout set --no-cone '/*' '!/.repos/'
+          git fetch --quiet --filter=blob:none --depth=1 origin "$CLIENT_COMMIT"
+          git checkout --quiet --detach FETCH_HEAD
+          test "$(git rev-parse HEAD)" = "$CLIENT_COMMIT"
       - name: Apply Windows packaging configuration
         run: node quota-overlay/scripts/windows/prepare.mjs .
       - uses: ./.github/actions/setup-ci-deps
