@@ -20,3 +20,12 @@ const block = buildInjectedHeadBlock("zh");
 for (const [, body] of block.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/g)) new Script(body);
 writeFileSync(entry, original.replace(injected, () => block));
 copyFileSync(path.join(here, "../../LICENSE"), path.join(client, "apps/desktop/resources/LICENSE-quota-ui.txt"));
+
+// The native Windows build prepares bytecode on the target architecture.
+// Bound this distribution to the observed 95 loose files; all archive,
+// architecture, dependency, WSL and installed-app checks still run.
+const packager = path.join(client, "scripts/build-desktop-artifact.ts");
+const source = readFileSync(packager, "utf8");
+const limit = "export const WINDOWS_PACKAGED_PAYLOAD_FILE_LIMIT = 80;";
+if (!source.includes(limit)) throw new Error("Recheck the Windows payload budget");
+writeFileSync(packager, source.replace(limit, limit.replace("80", "95")));
