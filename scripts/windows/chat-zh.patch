@@ -1,0 +1,225 @@
+diff --git a/apps/web/src/components/settings/AdvancedSettings.tsx b/apps/web/src/components/settings/AdvancedSettings.tsx
+index 1c355de7..2040e378 100644
+--- a/apps/web/src/components/settings/AdvancedSettings.tsx
++++ b/apps/web/src/components/settings/AdvancedSettings.tsx
+@@ -1,3 +1,6 @@
++import { resolveLocale } from "@t3tools/client-runtime/locales";
++import { SUPPORTED_LOCALES } from "../../i18n/locales";
++import { useScopedSettings } from "./useScopedSettings";
+ import { ChevronRightIcon } from "lucide-react";
+ import { type ReactNode, useState } from "react";
+ 
+@@ -15,6 +18,7 @@ export function AdvancedSettings({
+   readonly targetIds: ReadonlyArray<string>;
+   readonly children: ReactNode;
+ }) {
++  const zh = resolveLocale(useScopedSettings().language, navigator.languages, SUPPORTED_LOCALES, "en") === "zh";
+   const [open, setOpen] = useState(false);
+   const searchTargetId = useSettingsSearchTargetId();
+   const [seenSearchTargetId, setSeenSearchTargetId] = useState<string | null>(null);
+@@ -30,7 +34,7 @@ export function AdvancedSettings({
+           aria-hidden
+           className="size-3.5 shrink-0 transition-transform duration-150 group-data-panel-open:rotate-90 motion-reduce:transition-none"
+         />
+-        Advanced
++        {zh ? "高级" : "Advanced"}
+       </CollapsibleTrigger>
+       <CollapsiblePanel>
+         <div className="border-t border-border/50 *:not-first:border-t *:not-first:border-border/50">
+diff --git a/apps/web/src/components/settings/SettingsPanels.tsx b/apps/web/src/components/settings/SettingsPanels.tsx
+index e2e32f6b..fae66b3d 100644
+--- a/apps/web/src/components/settings/SettingsPanels.tsx
++++ b/apps/web/src/components/settings/SettingsPanels.tsx
+@@ -111,7 +111,7 @@ import {
+   SettingsSection,
+ } from "./settingsLayout";
+ import { searchableSetting, type SettingsSearchItemId } from "./settingsSearch";
+-import { nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
++import { resolveLocale, nativeLanguageName, SYSTEM_LANGUAGE } from "@t3tools/client-runtime/locales";
+ import { SUPPORTED_LOCALES } from "../../i18n/locales";
+ import { BackgroundActivitySettingsRow } from "./BackgroundActivitySettings";
+ import { AdvancedSettings } from "./AdvancedSettings";
+@@ -1156,20 +1156,22 @@ export function GeneralSettingsPanel() {
+ 
+ export function ChatSettingsPanel() {
+   const modifierLabel = isMacPlatform(navigator.platform) ? "⌘" : "Ctrl";
++  const settings = useScopedSettings();
++  const zh = resolveLocale(settings.language, navigator.languages, SUPPORTED_LOCALES, "en") === "zh";
+   const sendShortcutOptions = [
+     { value: "enter", label: "Enter" },
+-    { value: "mod-enter-multiline", label: `${modifierLabel} + Enter for multiline prompts` },
+-    { value: "mod-enter", label: `${modifierLabel} + Enter always` },
++    { value: "mod-enter-multiline", label: zh ? `多行消息用 ${modifierLabel} + Enter 发送` : `${modifierLabel} + Enter for multiline prompts` },
++    { value: "mod-enter", label: zh ? `始终用 ${modifierLabel} + Enter 发送` : `${modifierLabel} + Enter always` },
+   ] as const;
+-  const settings = useScopedSettings();
+   const updateSettings = useUpdateScopedSettings();
+ 
+   return (
+     <SettingsPageContainer>
+-      <SettingsSection id="composer" title="Composer">
++      <SettingsSection id="composer" title={zh ? "输入框" : "Composer"}>
+         <SettingsRow
+           {...searchableSetting("composer-rich-text")}
+-          description="Show formatted Markdown as you type."
++          title={zh ? "富文本输入框" : searchableSetting("composer-rich-text").title}
++          description={zh ? "输入时显示 Markdown 排版效果。" : "Show formatted Markdown as you type."}
+           resetAction={
+             settings.composerRichTextEnabled !==
+             DEFAULT_UNIFIED_SETTINGS.composerRichTextEnabled ? (
+@@ -1195,7 +1197,8 @@ export function ChatSettingsPanel() {
+         />
+         <SettingsRow
+           {...searchableSetting("send-shortcut")}
+-          description="Choose when Enter sends a prompt or inserts a new line"
++          title={zh ? "发送快捷键" : searchableSetting("send-shortcut").title}
++          description={zh ? "选择按 Enter 时发送消息还是换行。" : "Choose when Enter sends a prompt or inserts a new line"}
+           resetAction={
+             settings.sendShortcut !== DEFAULT_UNIFIED_SETTINGS.sendShortcut ? (
+               <SettingResetButton
+@@ -1242,7 +1245,8 @@ export function ChatSettingsPanel() {
+         <AdvancedSettings targetIds={[searchableSetting("skills-in-slash-menu").id]}>
+           <SettingsRow
+             {...searchableSetting("skills-in-slash-menu")}
+-            description="Also include skills in the / command menu. Skills always appear when you type $."
++          title={zh ? "在斜杠菜单中显示技能" : searchableSetting("skills-in-slash-menu").title}
++            description={zh ? "在 / 命令菜单中也显示技能。输入 $ 时始终会显示技能。" : "Also include skills in the / command menu. Skills always appear when you type $."}
+             resetAction={
+               settings.showSkillsInSlashMenu !== DEFAULT_UNIFIED_SETTINGS.showSkillsInSlashMenu ? (
+                 <SettingResetButton
+@@ -1268,11 +1272,12 @@ export function ChatSettingsPanel() {
+         </AdvancedSettings>
+       </SettingsSection>
+ 
+-      <SettingsSection id="follow-ups" title="Follow-ups">
++      <SettingsSection id="follow-ups" title={zh ? "后续消息" : "Follow-ups"}>
+         <SettingsRow
+           {...searchableSetting("follow-up-behavior")}
++          title={zh ? "后续消息的处理方式" : searchableSetting("follow-up-behavior").title}
+           description={
+-            "Queue follow-ups while the agent runs or steer the current run. " +
++            zh ? "智能体运行时，后续消息可以排队等待，也可以立即调整当前任务。" + (settings.sendShortcut === "mod-enter-multiline" ? `单行消息按 ${modifierLabel} + Enter，多行消息按 ${modifierLabel} + Shift + Enter，可临时使用另一种方式。` : `按 ${modifierLabel}${settings.sendShortcut === "mod-enter" ? " + Shift" : ""} + Enter，可临时使用另一种方式。`) : "Queue follow-ups while the agent runs or steer the current run. " +
+             (settings.sendShortcut === "mod-enter-multiline"
+               ? `Press ${modifierLabel} + Enter for single-line prompts or ${modifierLabel} + Shift + Enter for multiline prompts to do the opposite for one message.`
+               : `Press ${modifierLabel}${settings.sendShortcut === "mod-enter" ? " + Shift" : ""} + Enter to do the opposite for one message.`)
+@@ -1300,23 +1305,23 @@ export function ChatSettingsPanel() {
+             >
+               <SelectTrigger size="sm" className="w-auto min-w-0" aria-label="Follow-up behavior">
+                 <SelectValue>
+-                  {settings.followUpBehavior === "queue" ? "Queue" : "Steer"}
++                  {settings.followUpBehavior === "queue" ? (zh ? "加入队列" : "Queue") : (zh ? "引导当前任务" : "Steer")}
+                 </SelectValue>
+               </SelectTrigger>
+               <SelectPopup align="end" alignItemWithTrigger={false}>
+-                <SelectItem value="queue">Queue</SelectItem>
+-                <SelectItem value="steer">Steer</SelectItem>
++                <SelectItem value="queue">{zh ? "加入队列" : "Queue"}</SelectItem>
++                <SelectItem value="steer">{zh ? "引导当前任务" : "Steer"}</SelectItem>
+               </SelectPopup>
+             </Select>
+           }
+         />
+       </SettingsSection>
+ 
+-      <SettingsSection id="activity" title="Activity">
++      <SettingsSection id="activity" title={zh ? "活动" : "Activity"}>
+         <ToolCallVisibilityRow />
+       </SettingsSection>
+ 
+-      <SettingsSection id="screen-reader" title="Screen reader">
++      <SettingsSection id="screen-reader" title={zh ? "屏幕阅读器" : "Screen reader"}>
+         <ScreenReaderAnnouncementsRow />
+         <ScreenReaderWindowTitleRow />
+       </SettingsSection>
+@@ -1324,6 +1329,7 @@ export function ChatSettingsPanel() {
+   );
+ }
+ 
++const TOOL_CALL_VISIBILITY_LABELS_ZH = {"showAll": "显示全部", "hideSuccessful": "隐藏成功项", "hideAll": "隐藏全部", "zen": "专注模式"};
+ const TOOL_CALL_VISIBILITY_LABELS: Record<ToolCallVisibility, string> = {
+   showAll: "Show all",
+   hideSuccessful: "Hide successful",
+@@ -1335,11 +1341,13 @@ const isToolCallVisibility = Schema.is(ToolCallVisibility);
+ 
+ function ToolCallVisibilityRow() {
+   const settings = useScopedSettings();
++  const zh = resolveLocale(settings.language, navigator.languages, SUPPORTED_LOCALES, "en") === "zh";
+   const updateSettings = useUpdateScopedSettings();
+   return (
+     <SettingsRow
+       {...searchableSetting("tool-call-visibility")}
+-      description="Hide the commands, edits, and searches agents run. Hide successful keeps failures. Zen shows only final answers. Approvals, questions, and errors always show."
++          title={zh ? "聊天中的工具调用" : searchableSetting("tool-call-visibility").title}
++      description={zh ? "选择如何显示智能体执行的命令、编辑和搜索。「隐藏成功项」会保留失败项，「专注模式」仅显示最终答复。审批、提问和错误始终显示。" : "Hide the commands, edits, and searches agents run. Hide successful keeps failures. Zen shows only final answers. Approvals, questions, and errors always show."}
+       resetAction={
+         settings.toolCallVisibility !== DEFAULT_UNIFIED_SETTINGS.toolCallVisibility ? (
+           <SettingResetButton
+@@ -1358,12 +1366,12 @@ function ToolCallVisibilityRow() {
+           }}
+         >
+           <SelectTrigger size="sm" className="w-full sm:w-40" aria-label="Tool calls in chat">
+-            <SelectValue>{TOOL_CALL_VISIBILITY_LABELS[settings.toolCallVisibility]}</SelectValue>
++            <SelectValue>{(zh ? TOOL_CALL_VISIBILITY_LABELS_ZH : TOOL_CALL_VISIBILITY_LABELS)[settings.toolCallVisibility]}</SelectValue>
+           </SelectTrigger>
+           <SelectPopup align="end" alignItemWithTrigger={false}>
+             {ToolCallVisibility.literals.map((value) => (
+               <SelectItem key={value} value={value}>
+-                {TOOL_CALL_VISIBILITY_LABELS[value]}
++                {(zh ? TOOL_CALL_VISIBILITY_LABELS_ZH : TOOL_CALL_VISIBILITY_LABELS)[value]}
+               </SelectItem>
+             ))}
+           </SelectPopup>
+@@ -1373,6 +1381,7 @@ function ToolCallVisibilityRow() {
+   );
+ }
+ 
++const SCREEN_READER_ANNOUNCEMENTS_LABELS_ZH = {"status": "仅状态", "messages": "状态和消息", "everything": "全部"};
+ const SCREEN_READER_ANNOUNCEMENTS_LABELS: Record<ScreenReaderAnnouncements, string> = {
+   status: "Status only",
+   messages: "Status and messages",
+@@ -1383,11 +1392,13 @@ const isScreenReaderAnnouncements = Schema.is(ScreenReaderAnnouncements);
+ 
+ function ScreenReaderAnnouncementsRow() {
+   const settings = useScopedSettings();
++  const zh = resolveLocale(settings.language, navigator.languages, SUPPORTED_LOCALES, "en") === "zh";
+   const updateSettings = useUpdateScopedSettings();
+   return (
+     <SettingsRow
+       {...searchableSetting("screen-reader-announcements")}
+-      description="What a screen reader hears from the open thread: a turn starting, needing you, and ending. Status and messages adds what the agent writes before its last message. Everything adds each step."
++          title={zh ? "屏幕阅读器播报" : searchableSetting("screen-reader-announcements").title}
++      description={zh ? "选择屏幕阅读器播报的内容。「仅状态」播报任务开始、需要你处理和结束。「状态和消息」也播报最终答复之前的消息。「全部」还会逐步播报。" : "What a screen reader hears from the open thread: a turn starting, needing you, and ending. Status and messages adds what the agent writes before its last message. Everything adds each step."}
+       resetAction={
+         settings.screenReaderAnnouncements !==
+         DEFAULT_UNIFIED_SETTINGS.screenReaderAnnouncements ? (
+@@ -1416,13 +1427,13 @@ function ScreenReaderAnnouncementsRow() {
+             aria-label="Screen reader announcements"
+           >
+             <SelectValue>
+-              {SCREEN_READER_ANNOUNCEMENTS_LABELS[settings.screenReaderAnnouncements]}
++              {(zh ? SCREEN_READER_ANNOUNCEMENTS_LABELS_ZH : SCREEN_READER_ANNOUNCEMENTS_LABELS)[settings.screenReaderAnnouncements]}
+             </SelectValue>
+           </SelectTrigger>
+           <SelectPopup align="end" alignItemWithTrigger={false}>
+             {ScreenReaderAnnouncements.literals.map((value) => (
+               <SelectItem key={value} value={value}>
+-                {SCREEN_READER_ANNOUNCEMENTS_LABELS[value]}
++                {(zh ? SCREEN_READER_ANNOUNCEMENTS_LABELS_ZH : SCREEN_READER_ANNOUNCEMENTS_LABELS)[value]}
+               </SelectItem>
+             ))}
+           </SelectPopup>
+@@ -1434,11 +1445,13 @@ function ScreenReaderAnnouncementsRow() {
+ 
+ function ScreenReaderWindowTitleRow() {
+   const settings = useScopedSettings();
++  const zh = resolveLocale(settings.language, navigator.languages, SUPPORTED_LOCALES, "en") === "zh";
+   const updateSettings = useUpdateScopedSettings();
+   return (
+     <SettingsRow
+       {...searchableSetting("screen-reader-window-title")}
+-      description="Start the window title with the thread's status, like Needs approval, and its name, so screen readers read them first when you switch apps. Taskbars, shared screens, and time trackers see it too."
++          title={zh ? "屏幕阅读器窗口标题" : searchableSetting("screen-reader-window-title").title}
++      description={zh ? "将对话状态（如「需要审批」）和名称放在窗口标题开头，切换应用时屏幕阅读器会先读到它们。任务栏、屏幕共享和时间追踪工具也能看到。" : "Start the window title with the thread's status, like Needs approval, and its name, so screen readers read them first when you switch apps. Taskbars, shared screens, and time trackers see it too."}
+       resetAction={
+         settings.screenReaderWindowTitle !== DEFAULT_UNIFIED_SETTINGS.screenReaderWindowTitle ? (
+           <SettingResetButton
