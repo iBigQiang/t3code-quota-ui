@@ -14,7 +14,7 @@ permissions:
 
 env:
   CLIENT_COMMIT: d1bb533d9b69165ce94f1add52f9dcb53dd15684
-  APP_VERSION: 0.1.10-quota.1.4.1
+  APP_VERSION: 0.1.10-quota.1.4.3
   NODE_OPTIONS: --max-old-space-size=6144
   T3CODE_TELEMETRY_ENABLED: 'false'
   T3CODE_TELEMETRY_CHANNEL: dev
@@ -47,6 +47,8 @@ jobs:
       - name: Build the desktop, backend and renderer
         run: |
           node scripts/update-release-package-versions.ts "$APP_VERSION"
+          git apply --ignore-space-change quota-overlay/scripts/windows/chat-zh.patch
+          node quota-overlay/scripts/windows/zh/localize.cjs
           vp run build:desktop:bundle
           grep -q 'id="t3-quota-ui-i18n"' apps/server/dist/client/index.html
       - name: Build matching x64 WSL runtime
@@ -107,6 +109,9 @@ jobs:
         run: |
           node scripts/update-release-package-versions.ts $env:APP_VERSION
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          $vp = Get-ChildItem "$env:USERPROFILE/.vite-plus" -Filter vp.exe -Recurse | Select-Object -First 1
+          if ($vp) { $env:Path = "$($vp.DirectoryName);$env:Path" }
+          Get-Command vp -ErrorAction Stop
           $wsl = Get-Item "release-cli/t3-$env:APP_VERSION-linux-x64.tar.gz"
           node scripts/build-desktop-artifact.ts --platform win --target nsis --arch x64 --skip-build --build-version $env:APP_VERSION --wsl-runtime $wsl.FullName --output-dir release --verbose
       - name: Install to D drive and test the installed application
@@ -148,4 +153,4 @@ jobs:
         run: |
           sha256sum -c *.sha256
           zip -0 T3-Code-Quota-UI-Windows-x64.zip *.exe *.sha256
-          gh release create windows-x64-quota-1.4.1 *.exe *.sha256 *.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows x64 · Taller model picker" --notes "Responsive model picker height."
+          gh release create windows-x64-quota-1.4.3 *.exe *.sha256 *.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows x64 · 简体中文界面与模型选择器" --notes "扩展简体中文覆盖，保留自适应模型列表。"

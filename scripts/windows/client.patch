@@ -75,19 +75,6 @@ index 7f277fdc..2ae86e47 100644
 +    Call QuotaValidateDirectory
 +  ${EndIf}
 +!macroend
-diff --git a/apps/desktop/src/app/DesktopConfig.ts b/apps/desktop/src/app/DesktopConfig.ts
-index ef290904..5755cc79 100644
---- a/apps/desktop/src/app/DesktopConfig.ts
-+++ b/apps/desktop/src/app/DesktopConfig.ts
-@@ -57,7 +57,7 @@ export const DesktopConfig = Config.all({
-   ),
-   desktopLauncherPath: trimmedString("T3CODE_DESKTOP_LAUNCHER_PATH"),
-   appImagePath: trimmedString("APPIMAGE"),
--  disableAutoUpdate: optionalBoolean("T3CODE_DISABLE_AUTO_UPDATE"),
-+  disableAutoUpdate: Config.Boolean("T3CODE_DISABLE_AUTO_UPDATE").pipe(Config.withDefault(true)),
-   mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
-   mockUpdateServerPort: Config.Port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
-     Config.withDefault(3000),
 diff --git a/apps/desktop/src/app/DesktopEnvironment.ts b/apps/desktop/src/app/DesktopEnvironment.ts
 index d5fed4b2..d81f8bc5 100644
 --- a/apps/desktop/src/app/DesktopEnvironment.ts
