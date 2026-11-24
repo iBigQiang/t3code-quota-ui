@@ -9,6 +9,72 @@ index 97554fd8..53cacc3f 100644
 -  "productName": "T3 Code (Beta)"
 +  "productName": "T3 Code Quota UI"
  }
+diff --git a/apps/desktop/resources/installer.nsh b/apps/desktop/resources/installer.nsh
+index 7f277fdc..2ae86e47 100644
+--- a/apps/desktop/resources/installer.nsh
++++ b/apps/desktop/resources/installer.nsh
+@@ -40,3 +40,61 @@
+     ${EndIf}
+   !endif
+ !macroend
++
++; Use the exact directory entered by the user. The standard assisted page
++; unconditionally appends APP_FILENAME to many valid user-supplied names.
++!macro customPageAfterChangeDir
++  Var quotaDirectorySuggested
++
++  Function QuotaDirectoryPre
++    ${If} ${isUpdated}
++      Abort
++    ${EndIf}
++    ${If} $quotaDirectorySuggested == ""
++      StrCpy $quotaDirectorySuggested "1"
++      !insertmacro GetDParameter $R0
++      ${If} $R0 == ""
++      ${AndIf} $hasPerUserInstallation != "1"
++      ${AndIf} $hasPerMachineInstallation != "1"
++        System::Call 'kernel32::GetDriveTypeW(w "D:\") i.r0'
++        ${If} $0 == 3
++          StrCpy $INSTDIR "D:\T3Code"
++        ${EndIf}
++      ${EndIf}
++    ${EndIf}
++  FunctionEnd
++
++  ; The uninstaller removes its application directory recursively. Only adopt
++  ; an empty/new folder or the existing registered installation of this app.
++  Function QuotaValidateDirectory
++    Push $0
++    System::Call 'shlwapi::PathIsRootW(w "$INSTDIR") i.r0'
++    StrCmp $0 "0" 0 quota_invalid
++    IfFileExists "$INSTDIR\." 0 quota_valid
++    System::Call 'shlwapi::PathIsDirectoryEmptyW(w "$INSTDIR") i.r0'
++    StrCmp $0 "0" 0 quota_valid
++    ReadRegStr $0 SHCTX "${INSTALL_REGISTRY_KEY}" "InstallLocation"
++    StrCmp $0 "$INSTDIR" 0 quota_invalid
++    IfFileExists "$INSTDIR\${APP_EXECUTABLE_FILENAME}" quota_valid quota_invalid
++    quota_invalid:
++      Pop $0
++      ${If} ${Silent}
++        SetErrorLevel 2
++        Quit
++      ${EndIf}
++      MessageBox MB_OK|MB_ICONEXCLAMATION "请选择专用的空文件夹或已有的 T3 Code Quota UI 安装目录。$\r$\nChoose an empty folder or the existing T3 Code Quota UI installation."
++      Abort
++    quota_valid:
++      Pop $0
++  FunctionEnd
++
++  !define MUI_PAGE_CUSTOMFUNCTION_PRE QuotaDirectoryPre
++  !define MUI_PAGE_CUSTOMFUNCTION_LEAVE QuotaValidateDirectory
++  !insertmacro MUI_PAGE_DIRECTORY
++!macroend
++
++!macro customInit
++  ${If} ${Silent}
++    Call QuotaValidateDirectory
++  ${EndIf}
++!macroend
 diff --git a/apps/desktop/src/app/DesktopConfig.ts b/apps/desktop/src/app/DesktopConfig.ts
 index ef290904..5755cc79 100644
 --- a/apps/desktop/src/app/DesktopConfig.ts
@@ -22,6 +88,19 @@ index ef290904..5755cc79 100644
    mockUpdates: optionalBoolean("T3CODE_DESKTOP_MOCK_UPDATES"),
    mockUpdateServerPort: Config.Port("T3CODE_DESKTOP_MOCK_UPDATE_SERVER_PORT").pipe(
      Config.withDefault(3000),
+diff --git a/apps/desktop/src/app/DesktopEnvironment.ts b/apps/desktop/src/app/DesktopEnvironment.ts
+index d5fed4b2..d81f8bc5 100644
+--- a/apps/desktop/src/app/DesktopEnvironment.ts
++++ b/apps/desktop/src/app/DesktopEnvironment.ts
+@@ -228,7 +228,7 @@ const make = Effect.fn("desktop.environment.make")(function* (
+     branding,
+     displayName,
+     appUserModelId: Option.getOrElse(config.appUserModelIdOverride, () =>
+-      isDevelopment ? "com.t3tools.t3code.dev" : "com.t3tools.t3code",
++      isDevelopment ? "com.t3tools.t3code.dev" : "io.github.ibigqiang.t3codequotaui",
+     ),
+     linuxDesktopEntryName: resolveLinuxDesktopEntryName(isDevelopment),
+     linuxApplicationsDir,
 diff --git a/apps/web/src/components/usage/UsagePage.tsx b/apps/web/src/components/usage/UsagePage.tsx
 index 4f984642..2687d778 100644
 --- a/apps/web/src/components/usage/UsagePage.tsx
@@ -117,7 +196,7 @@ index f2a2d9c7..40c35bde 100644
  }
  
 diff --git a/scripts/build-desktop-artifact.ts b/scripts/build-desktop-artifact.ts
-index 0d8b8e57..deb0b573 100644
+index 0d8b8e57..888068c6 100644
 --- a/scripts/build-desktop-artifact.ts
 +++ b/scripts/build-desktop-artifact.ts
 @@ -63,7 +63,7 @@ import { Command, Flag } from "effect/cli";
@@ -160,7 +239,7 @@ index 0d8b8e57..deb0b573 100644
      buildConfig.npmRebuild = false;
      buildConfig.nsis = {
 +      oneClick: false,
-+      allowToChangeInstallationDirectory: true,
++      // installer.nsh supplies an exact-path directory page.
 +      runAfterFinish: false,
 +      language: "2052",
 +      installerLanguages: ["zh_CN", "en_US"],

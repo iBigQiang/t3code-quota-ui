@@ -114,14 +114,10 @@ jobs:
         run: |
           $dir = 'D:\T3Code'
           $exe = Get-Item "release/T3-Code-Quota-UI-$env:APP_VERSION-x64.exe"
-          $setup = Start-Process $exe.FullName -ArgumentList '/S', '/currentuser', "/D=$dir" -PassThru -Wait
-          if ($setup.ExitCode -ne 0) { throw "NSIS exited with $($setup.ExitCode)" }
-          $installed = Get-Item (Join-Path $dir 'T3 Code Quota UI.exe')
-          node scripts/smoke-desktop-app.ts --executable $installed.FullName --artifacts-dir "$env:RUNNER_TEMP/quota-smoke"
-          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          & ./quota-overlay/scripts/windows/test-installer.ps1 -Installer $exe.FullName -Destination $dir
           $sum = (Get-FileHash $exe.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
           "$sum  $($exe.Name)" | Set-Content -Encoding ascii "$($exe.FullName).sha256"
-          "Installed and launched from $($installed.FullName). SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
+          "Verified the live directory chooser and launched the installed app from $dir. SHA-256: $sum" >> $env:GITHUB_STEP_SUMMARY
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: T3-Code-Quota-UI-Windows-x64
