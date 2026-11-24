@@ -14,7 +14,7 @@ permissions:
 
 env:
   CLIENT_COMMIT: d1bb533d9b69165ce94f1add52f9dcb53dd15684
-  APP_VERSION: 0.1.10-quota.1.4.0
+  APP_VERSION: 0.1.10-quota.1.4.1
   NODE_OPTIONS: --max-old-space-size=6144
   T3CODE_TELEMETRY_ENABLED: 'false'
   T3CODE_TELEMETRY_CHANNEL: dev
@@ -132,3 +132,20 @@ jobs:
           compression-level: 0
           if-no-files-found: error
           retention-days: 30
+
+  publish-picker-update:
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+      contents: write
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: T3-Code-Quota-UI-Windows-x64
+      - env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          sha256sum -c *.sha256
+          zip -0 T3-Code-Quota-UI-Windows-x64.zip *.exe *.sha256
+          gh release create windows-x64-quota-1.4.1 *.exe *.sha256 *.zip --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Windows x64 · Taller model picker" --notes "Responsive model picker height."
