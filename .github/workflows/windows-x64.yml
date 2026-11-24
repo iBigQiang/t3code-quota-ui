@@ -48,7 +48,8 @@ jobs:
         run: |
           node scripts/update-release-package-versions.ts "$APP_VERSION"
           git apply --ignore-space-change quota-overlay/scripts/windows/chat-zh.patch
-          node quota-overlay/scripts/windows/zh/localize.cjs
+          npm install --prefix "$RUNNER_TEMP/quota-i18n" --no-audit --no-fund --ignore-scripts typescript@5.9.3
+          NODE_PATH="$RUNNER_TEMP/quota-i18n/node_modules" node quota-overlay/scripts/windows/zh/localize.cjs
           vp run build:desktop:bundle
           grep -q 'id="t3-quota-ui-i18n"' apps/server/dist/client/index.html
       - name: Build matching x64 WSL runtime
